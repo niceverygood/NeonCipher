@@ -4,9 +4,9 @@ import { Screen } from '@/ui/Screen';
 import { ScreenHeader, GhostFigure, StarRow, RARITY_COLOR } from '@/ui/primitives';
 import { useGame } from '@/state/store';
 import { GHOSTS, GHOST_BY_ID } from '@/data/ghosts';
-import { ATTR_VAR, ATTR_LABEL, ROLE_LABEL, ATTR_ORDER } from '@/data/balance';
+import { ATTR_VAR, ROLE_LABEL } from '@/data/balance';
 import { deriveStats } from '@/game/progression/stats';
-import type { Attribute } from '@/types';
+import { computeSynergy } from '@/game/progression/synergy';
 
 export default function Team() {
   const nav = useNavigate();
@@ -19,22 +19,7 @@ export default function Team() {
 
   const power = deck.reduce((sum, id) => (id && owned[id] ? sum + deriveStats(GHOST_BY_ID[id], owned[id]).power : sum), 0);
 
-  // synergy: attribute + role counts
-  const attrCount: Partial<Record<Attribute, number>> = {};
-  const roleCount: Record<string, number> = {};
-  deck.forEach((id) => {
-    if (!id) return;
-    const d = GHOST_BY_ID[id];
-    attrCount[d.attribute] = (attrCount[d.attribute] ?? 0) + 1;
-    roleCount[d.role] = (roleCount[d.role] ?? 0) + 1;
-  });
-  const synergies: string[] = [];
-  for (const a of ATTR_ORDER) {
-    if ((attrCount[a] ?? 0) >= 2) synergies.push(`${ATTR_LABEL[a]} 공명 ×${attrCount[a]}`);
-  }
-  const hasTank = (roleCount['TANK'] ?? 0) >= 1;
-  const hasHeal = (roleCount['HEALER'] ?? 0) + (roleCount['SUPPORT'] ?? 0) >= 1;
-  if (hasTank && hasHeal) synergies.push('전열·복원 균형');
+  const synergy = computeSynergy(deck);
 
   const assign = (id: string) => {
     setDeckSlot(activeSlot, id);
@@ -92,9 +77,34 @@ export default function Team() {
           <span className="font-mono" style={{ fontSize: 10, color: 'var(--muted)' }}>
             전투력 <span style={{ color: 'var(--cyan)', fontWeight: 700, fontFamily: 'var(--disp)' }}>{power.toLocaleString()}</span>
           </span>
-          <span className="font-mono" style={{ fontSize: 9, color: 'var(--spike)' }}>
-            {synergies.length ? synergies.join(' · ') : '시너지 없음'}
-          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {synergy.atkMult > 1 && <MiniStat label="ATK" value={`+${Math.round((synergy.atkMult - 1) * 100)}%`} color="var(--fire)" />}
+            {synergy.hpMult > 1 && <MiniStat label="HP" value={`+${Math.round((synergy.hpMult - 1) * 100)}%`} color="var(--spike)" />}
+            {synergy.coreMult > 1 && <MiniStat label="CORE" value={`+${Math.round((synergy.coreMult - 1) * 100)}%`} color="var(--repair)" />}
+            {synergy.energyBonus > 0 && <MiniStat label="EN" value={`+${synergy.energyBonus}`} color="var(--surge)" />}
+          </div>
+        </div>
+
+        {/* active synergy effects */}
+        <div className="panel" style={{ marginTop: 10, padding: '10px 12px', background: 'var(--panel2)' }}>
+          <div className="font-mono" style={{ fontSize: 8.5, letterSpacing: '0.2em', color: 'var(--spike)', marginBottom: synergy.effects.length ? 8 : 0 }}>
+            ACTIVE SYNERGY · 전투 적용
+          </div>
+          {synergy.effects.length === 0 ? (
+            <div className="font-mono" style={{ fontSize: 10, color: 'var(--dim)' }}>
+              같은 속성·역할을 모아 시너지를 활성화하세요
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {synergy.effects.map((e) => (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: e.color, boxShadow: `0 0 6px ${e.color}`, flex: 'none' }} />
+                  <span className="font-disp" style={{ fontSize: 11, fontWeight: 700, color: e.color, flex: 'none' }}>{e.label}</span>
+                  <span style={{ fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.desc}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -138,5 +148,14 @@ export default function Team() {
         )}
       </div>
     </Screen>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <span className="font-mono" style={{ fontSize: 8.5, color, display: 'inline-flex', gap: 3, alignItems: 'baseline' }}>
+      <span style={{ color: 'var(--muted)' }}>{label}</span>
+      <span style={{ fontWeight: 700 }}>{value}</span>
+    </span>
   );
 }

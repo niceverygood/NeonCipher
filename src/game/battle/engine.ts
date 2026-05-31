@@ -93,10 +93,20 @@ function roleMode(role: Role): Unit['mode'] {
   return 'attack';
 }
 
+export interface SynergyMods {
+  atkMult: number;
+  hpMult: number;
+  coreMult: number;
+  energyBonus: number;
+}
+
 export interface EngineOptions {
   endless?: boolean;
   endlessGen?: (waveIndex: number) => WaveDef;
+  synergy?: SynergyMods;
 }
+
+const NO_SYNERGY: SynergyMods = { atkMult: 1, hpMult: 1, coreMult: 1, energyBonus: 0 };
 
 export class BattleEngine {
   readonly stage: StageDef;
@@ -105,6 +115,7 @@ export class BattleEngine {
   private endless: boolean;
   private endlessGen?: (waveIndex: number) => WaveDef;
   private waves: WaveDef[];
+  private synergy: SynergyMods;
 
   grid: Cell[];
   gridVersion = 0;
@@ -142,14 +153,17 @@ export class BattleEngine {
     this.rng = rng;
     this.endless = opts.endless ?? false;
     this.endlessGen = opts.endlessGen;
+    this.synergy = opts.synergy ?? NO_SYNERGY;
     this.waves = stage.waves.slice();
-    this.coreHp = stage.coreHp;
-    this.coreHpMax = stage.coreHp;
+    // Synergy: support roles raise the core's max HP.
+    this.coreHpMax = Math.round(stage.coreHp * this.synergy.coreMult);
+    this.coreHp = this.coreHpMax;
     this.grid = createBoard(rng);
     this.cooldowns = deck.map(() => 0);
+    const startEnergy = 30 + this.synergy.energyBonus;
     this.energy = ATTR_ORDER.reduce(
       (acc, a) => {
-        acc[a] = 30; // small starting energy so the player can act immediately
+        acc[a] = Math.min(GRID.energyCap, startEnergy); // start energy so the player can act immediately
         return acc;
       },
       {} as Record<Attribute, number>,
@@ -216,16 +230,18 @@ export class BattleEngine {
     const targetLane = lane ?? this.mostThreatenedLane();
     this.energy[def.attribute] -= def.cost;
     this.cooldowns[slot] = def.cooldown;
+    const synHp = Math.round(def.hp * this.synergy.hpMult);
+    const synAtk = Math.round(def.atk * this.synergy.atkMult);
     const unit: Unit = {
       id: this.unitIdSeq++,
       slot,
       ghostId: def.ghostId,
       lane: targetLane,
       pos: UNIT_POS,
-      hp: def.hp,
-      maxHp: def.hp,
+      hp: synHp,
+      maxHp: synHp,
       shield: 0,
-      atk: def.atk,
+      atk: synAtk,
       atkInterval: def.atkInterval,
       atkTimer: def.atkInterval * 0.5,
       mode: roleMode(def.role),
@@ -250,7 +266,7 @@ export class BattleEngine {
     switch (def.summonEffect) {
       case 'nuke_all': {
         flash(def.name);
-        const dmg = def.atk * 2.4 * dmgMult;
+        const dmg = self.atk * 2.4 * dmgMult;
         for (const e of this.enemies) this.damageEnemy(e, dmg);
         this.shake = 1;
         for (let l = 0; l < FIELD.lanes; l++) this.spawnParticles((l + 0.5) / FIELD.lanes, 0.4, def.color, 8);
@@ -258,7 +274,7 @@ export class BattleEngine {
       }
       case 'nuke_lane': {
         flash(def.name);
-        const dmg = def.atk * 3.4 * dmgMult;
+        const dmg = self.atk * 3.4 * dmgMult;
         for (const e of this.enemies) if (e.lane === lane) this.damageEnemy(e, dmg);
         this.shake = Math.min(1, this.shake + 0.6);
         this.spawnParticles((lane + 0.5) / FIELD.lanes, 0.5, def.color, 14);
@@ -268,13 +284,13 @@ export class BattleEngine {
         flash(def.name);
         // hit up to 4 enemies (any lane), front-first
         const targets = [...this.enemies].sort((x, y) => y.pos - x.pos).slice(0, 4);
-        targets.forEach((e, i) => this.damageEnemy(e, def.atk * (2 - i * 0.3) * dmgMult));
+        targets.forEach((e, i) => this.damageEnemy(e, self.atk * (2 - i * 0.3) * dmgMult));
         break;
       }
       case 'burn_lane': {
         flash(def.name);
         for (const e of this.enemies)
-          if (e.lane === lane) e.burn = { dps: def.atk * STATUS.burnDps, ttl: STATUS.burnDuration };
+          if (e.lane === lane) e.burn = { dps: self.atk * STATUS.burnDps, ttl: STATUS.burnDuration };
         break;
       }
       case 'vulnerable_lane': {
@@ -284,13 +300,13 @@ export class BattleEngine {
       }
       case 'heal_core_big': {
         flash(def.name);
-        const heal = Math.round(self.maxHp * 0.6 + def.atk * 6);
+        const heal = Math.round(self.maxHp * 0.6 + self.atk * 6);
         this.coreHp = Math.min(this.coreHpMax, this.coreHp + heal);
         this.fx.push({ type: 'heal', lane: 1, pos: 1, color: def.color, ttl: 0.7, maxTtl: 0.7, text: `+${heal}` });
         break;
       }
       case 'heal_core_small': {
-        const heal = Math.round(def.atk * 8 + 30);
+        const heal = Math.round(self.atk * 8 + 30);
         this.coreHp = Math.min(this.coreHpMax, this.coreHp + heal);
         this.fx.push({ type: 'heal', lane: 1, pos: 1, color: def.color, ttl: 0.6, maxTtl: 0.6, text: `+${heal}` });
         break;
@@ -302,7 +318,7 @@ export class BattleEngine {
       }
       case 'shield_all': {
         flash(def.name);
-        for (const u of this.units) u.shield += Math.round(def.atk * 6 + self.maxHp * 0.3);
+        for (const u of this.units) u.shield += Math.round(self.atk * 6 + self.maxHp * 0.3);
         break;
       }
       case 'none':

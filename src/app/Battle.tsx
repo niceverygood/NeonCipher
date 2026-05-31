@@ -8,6 +8,7 @@ import { STAGE_BY_ID, ENDLESS_STAGE, endlessWave } from '@/data/waves';
 import { GHOST_BY_ID } from '@/data/ghosts';
 import { ATTR_ORDER, ATTR_VAR, ATTR_GLYPH } from '@/data/balance';
 import { deriveStats, computeStars } from '@/game/progression/stats';
+import { computeSynergy } from '@/game/progression/synergy';
 import { sfx } from '@/audio/sfx';
 import type { Attribute, BattleResult } from '@/types';
 
@@ -97,8 +98,13 @@ export default function Battle() {
       return;
     }
     sfx.ensure();
-    engineRef.current = new BattleEngine(stage, deck, Math.random, isEndless ? { endless: true, endlessGen: endlessWave } : {});
-    prevCoreRef.current = stage.coreHp;
+    const syn = computeSynergy(deckIds);
+    const synergyMods = { atkMult: syn.atkMult, hpMult: syn.hpMult, coreMult: syn.coreMult, energyBonus: syn.energyBonus };
+    engineRef.current = new BattleEngine(stage, deck, Math.random, {
+      ...(isEndless ? { endless: true, endlessGen: endlessWave } : {}),
+      synergy: synergyMods,
+    });
+    prevCoreRef.current = engineRef.current.coreHpMax;
     setHud(snapshot(engineRef.current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageId]);
