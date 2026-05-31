@@ -29,9 +29,22 @@ function starterSave(): Omit<SaveState, 'settings'> & { settings: SaveState['set
     gacha: { pity: 0, guaranteed: false, totalPulls: 0 },
     clearedStages: [],
     deck: ['g_warden', 'g_ember', 'g_jolt', 'g_medic', 'g_patch'],
-    settings: { muted: true, reducedFx: false },
+    settings: { muted: false, reducedFx: false },
+    endlessBest: 0,
+    lastDailyClaim: '',
   };
 }
+
+export function todayKey(): string {
+  return new Date().toDateString();
+}
+
+export interface DailyReward {
+  crystal: number;
+  cube: number;
+  ticketSingle: number;
+}
+const DAILY_REWARD: DailyReward = { crystal: 800, cube: 300, ticketSingle: 1 };
 
 interface StoreState extends SaveState {
   // ---- gacha ----
@@ -45,6 +58,10 @@ interface StoreState extends SaveState {
   setDeckSlot: (index: number, ghostId: string | null) => void;
   // ---- battle ----
   finishBattle: (stageId: string, result: BattleResult) => { crystalGained: number };
+  finishEndless: (wave: number) => { crystalGained: number; isBest: boolean };
+  // ---- daily ----
+  canClaimDaily: () => boolean;
+  claimDaily: () => DailyReward | null;
   // ---- settings / misc ----
   toggleMute: () => void;
   setReducedFx: (v: boolean) => void;
@@ -159,6 +176,34 @@ export const useGame = create<StoreState>()(
         return { crystalGained };
       },
 
+      finishEndless: (wave) => {
+        const s = get();
+        // Reward scales with how deep you dove.
+        const crystalGained = 200 + wave * 120;
+        const isBest = wave > s.endlessBest;
+        set({
+          currencies: { ...s.currencies, crystal: s.currencies.crystal + crystalGained },
+          endlessBest: Math.max(s.endlessBest, wave),
+        });
+        return { crystalGained, isBest };
+      },
+
+      canClaimDaily: () => get().lastDailyClaim !== todayKey(),
+      claimDaily: () => {
+        const s = get();
+        if (s.lastDailyClaim === todayKey()) return null;
+        set({
+          lastDailyClaim: todayKey(),
+          currencies: {
+            ...s.currencies,
+            crystal: s.currencies.crystal + DAILY_REWARD.crystal,
+            cube: s.currencies.cube + DAILY_REWARD.cube,
+            ticketSingle: s.currencies.ticketSingle + DAILY_REWARD.ticketSingle,
+          },
+        });
+        return DAILY_REWARD;
+      },
+
       toggleMute: () => set((s) => ({ settings: { ...s.settings, muted: !s.settings.muted } })),
       setReducedFx: (v) => set((s) => ({ settings: { ...s.settings, reducedFx: v } })),
       resetData: () => set({ ...starterSave() }),
@@ -175,6 +220,8 @@ export const useGame = create<StoreState>()(
         clearedStages: s.clearedStages,
         deck: s.deck,
         settings: s.settings,
+        endlessBest: s.endlessBest,
+        lastDailyClaim: s.lastDailyClaim,
       }),
       migrate: (persisted, version) => {
         // Defensive: if the shape is broken or from an older version, reset.

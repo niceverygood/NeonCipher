@@ -12,6 +12,8 @@ export default function StageSelect() {
   const cleared = useGame((s) => s.clearedStages);
   const deck = useGame((s) => s.deck);
   const owned = useGame((s) => s.ownedGhosts);
+  const endlessBest = useGame((s) => s.endlessBest);
+  const endlessUnlocked = cleared.length >= 1;
 
   const deckPower = deck.reduce((sum, id) => {
     if (!id || !owned[id]) return sum;
@@ -103,6 +105,32 @@ export default function StageSelect() {
             </motion.div>
           );
         })}
+        {/* ENDLESS — DEEP DIVE */}
+        {endlessUnlocked && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="panel"
+            style={{ padding: 16, position: 'relative', overflow: 'hidden', borderColor: 'var(--surge)' }}
+          >
+            <div style={{ position: 'absolute', inset: 0, background: 'conic-gradient(from 0deg,transparent,rgba(255,212,0,.06),transparent 30%)', animation: 'spin 9s linear infinite', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.18em', color: 'var(--surge)' }}>DEEP DIVE · ∞</div>
+                <div className="font-disp" style={{ fontSize: 17, fontWeight: 700, color: '#f3f6ff', marginTop: 2 }}>무한 침투</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>끝없이 강해지는 적. 최고 도달 웨이브에 도전.</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="font-mono" style={{ fontSize: 8.5, color: 'var(--muted)' }}>BEST</div>
+                <div className="font-disp" style={{ fontSize: 22, fontWeight: 700, color: 'var(--surge)' }}>{endlessBest > 0 ? endlessBest + 1 : '-'}</div>
+              </div>
+            </div>
+            <button className="btn" disabled={!hasDeck} onClick={() => nav('/battle/endless')} style={{ width: '100%', marginTop: 14, padding: '11px', fontSize: 12, position: 'relative', borderColor: 'var(--surge)', color: '#fff5cc' }}>
+              {hasDeck ? '▼ 침투 시작' : '편성 필요'}
+            </button>
+          </motion.div>
+        )}
+
         {!hasDeck && (
           <button className="btn" onClick={() => nav('/team')} style={{ padding: 12, fontSize: 12 }}>
             편성 화면으로 이동

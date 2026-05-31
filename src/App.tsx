@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import Splash from '@/app/Splash';
 import Lobby from '@/app/Lobby';
 import StageSelect from '@/app/StageSelect';
@@ -10,6 +11,8 @@ import Gacha from '@/app/Gacha';
 import Codex from '@/app/Codex';
 import Team from '@/app/Team';
 import Settings from '@/app/Settings';
+import { useGame } from '@/state/store';
+import { sfx } from '@/audio/sfx';
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -32,6 +35,23 @@ function AnimatedRoutes() {
 }
 
 export default function App() {
+  const muted = useGame((s) => s.settings.muted);
+
+  // Keep the synth's mute state in sync with the store.
+  useEffect(() => {
+    sfx.setMuted(muted);
+  }, [muted]);
+
+  // Unlock/resume audio on the first user gesture (browser autoplay policy).
+  useEffect(() => {
+    const unlock = () => {
+      sfx.ensure();
+      sfx.setMuted(useGame.getState().settings.muted);
+    };
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
+
   return (
     <div className="app-shell">
       <div className="device">

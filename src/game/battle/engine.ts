@@ -3,8 +3,8 @@
 // and renders; all mutation happens here via step(dt) and input methods.
 // ============================================================================
 
-import type { Attribute, EnemyKind, Role, StageDef } from '@/types';
-import { ATTR_ORDER, COMBO, ENEMY, FIELD, GRID, OVERCLOCK } from '@/data/balance';
+import type { Attribute, EnemyKind, Role, StageDef, SummonEffect, WaveDef } from '@/types';
+import { ATTR_ORDER, COMBO, ENEMY, FIELD, GRID, OVERCLOCK, STATUS } from '@/data/balance';
 import {
   type Cell,
   type Rng,
@@ -28,6 +28,7 @@ export interface DeckUnitDef {
   cost: number;
   cooldown: number;
   color: string; // render color (attribute neon)
+  summonEffect: SummonEffect;
 }
 
 export interface Enemy {
@@ -38,6 +39,8 @@ export interface Enemy {
   hp: number;
   maxHp: number;
   atkTimer: number;
+  burn?: { dps: number; ttl: number };
+  vulnerableTtl: number; // >0 means taking extra damage
 }
 
 export interface Unit {
@@ -48,6 +51,7 @@ export interface Unit {
   pos: number; // fixed defensive line position
   hp: number;
   maxHp: number;
+  shield: number;
   atk: number;
   atkInterval: number;
   atkTimer: number;
@@ -57,13 +61,24 @@ export interface Unit {
 }
 
 export interface FxEvent {
-  type: 'hit' | 'core' | 'summon' | 'death' | 'heal';
+  type: 'hit' | 'core' | 'summon' | 'death' | 'heal' | 'skill';
   lane: number;
   pos: number;
   color: string;
   ttl: number;
   maxTtl: number;
   text?: string;
+}
+
+export interface Particle {
+  x: number; // normalized 0..1 across field width
+  y: number; // normalized 0..1 down field height
+  vx: number;
+  vy: number;
+  ttl: number;
+  maxTtl: number;
+  color: string;
+  size: number;
 }
 
 export type BattleStatus = 'playing' | 'won' | 'lost';
@@ -78,10 +93,18 @@ function roleMode(role: Role): Unit['mode'] {
   return 'attack';
 }
 
+export interface EngineOptions {
+  endless?: boolean;
+  endlessGen?: (waveIndex: number) => WaveDef;
+}
+
 export class BattleEngine {
   readonly stage: StageDef;
   private deck: DeckUnitDef[];
   private rng: Rng;
+  private endless: boolean;
+  private endlessGen?: (waveIndex: number) => WaveDef;
+  private waves: WaveDef[];
 
   grid: Cell[];
   gridVersion = 0;
@@ -89,6 +112,7 @@ export class BattleEngine {
   enemies: Enemy[] = [];
   units: Unit[] = [];
   fx: FxEvent[] = [];
+  particles: Particle[] = [];
 
   coreHp: number;
   coreHpMax: number;
@@ -98,6 +122,7 @@ export class BattleEngine {
   maxCombo = 0;
   overclock = 0; // 0..100 gauge
   overclockActive = 0; // seconds remaining
+  shake = 0; // 0..1, decays — read by renderer for screen shake
 
   waveIndex = 0;
   waveClock = 0;
@@ -105,14 +130,19 @@ export class BattleEngine {
   private enemyIdSeq = 1;
   private unitIdSeq = 1;
   cooldowns: number[]; // per deck slot, seconds remaining
+  lastSkill: { name: string; color: string; ttl: number } | null = null;
 
   status: BattleStatus = 'playing';
   timeSec = 0;
+  enemiesKilled = 0;
 
-  constructor(stage: StageDef, deck: DeckUnitDef[], rng: Rng = Math.random) {
+  constructor(stage: StageDef, deck: DeckUnitDef[], rng: Rng = Math.random, opts: EngineOptions = {}) {
     this.stage = stage;
     this.deck = deck;
     this.rng = rng;
+    this.endless = opts.endless ?? false;
+    this.endlessGen = opts.endlessGen;
+    this.waves = stage.waves.slice();
     this.coreHp = stage.coreHp;
     this.coreHpMax = stage.coreHp;
     this.grid = createBoard(rng);
@@ -132,10 +162,10 @@ export class BattleEngine {
 
   // ---- Player input ------------------------------------------------------
 
-  /** Attempt a swap. Returns true if a match resolved. */
-  trySwap(a: number, b: number): boolean {
-    if (this.status !== 'playing') return false;
-    if (!swapMakesMatch(this.grid, a, b)) return false;
+  /** Attempt a swap. Returns the cascade depth (>0) if a match resolved, else 0. */
+  trySwap(a: number, b: number): number {
+    if (this.status !== 'playing') return 0;
+    if (!swapMakesMatch(this.grid, a, b)) return 0;
     const board = swapped(this.grid, a, b);
     const { grid: finalGrid, steps } = resolveAll(board, this.rng);
     this.grid = finalGrid;
@@ -152,15 +182,18 @@ export class BattleEngine {
       this.overclock = Math.min(COMBO.overclockMax, this.overclock + COMBO.overclockPerCombo);
     });
 
+    if (this.combo >= 4) this.shake = Math.min(1, this.shake + 0.12);
+
     if (this.overclock >= COMBO.overclockMax && this.overclockActive <= 0) {
       this.activateOverclock();
     }
-    return true;
+    return steps.length;
   }
 
   private activateOverclock(): void {
     this.overclockActive = OVERCLOCK.durationSec;
     this.overclock = 0;
+    this.shake = 1;
     this.fx.push({
       type: 'summon',
       lane: 1,
@@ -183,7 +216,7 @@ export class BattleEngine {
     const targetLane = lane ?? this.mostThreatenedLane();
     this.energy[def.attribute] -= def.cost;
     this.cooldowns[slot] = def.cooldown;
-    this.units.push({
+    const unit: Unit = {
       id: this.unitIdSeq++,
       slot,
       ghostId: def.ghostId,
@@ -191,22 +224,91 @@ export class BattleEngine {
       pos: UNIT_POS,
       hp: def.hp,
       maxHp: def.hp,
+      shield: 0,
       atk: def.atk,
       atkInterval: def.atkInterval,
       atkTimer: def.atkInterval * 0.5,
       mode: roleMode(def.role),
       color: def.color,
       attribute: def.attribute,
-    });
-    this.fx.push({
-      type: 'summon',
-      lane: targetLane,
-      pos: UNIT_POS,
-      color: def.color,
-      ttl: 0.6,
-      maxTtl: 0.6,
-    });
+    };
+    this.units.push(unit);
+    this.fx.push({ type: 'summon', lane: targetLane, pos: UNIT_POS, color: def.color, ttl: 0.6, maxTtl: 0.6 });
+    this.spawnParticles((targetLane + 0.5) / FIELD.lanes, UNIT_POS, def.color, 10);
+    this.applySummonSkill(def, targetLane, unit);
     return true;
+  }
+
+  // ---- Summon skills -----------------------------------------------------
+
+  private applySummonSkill(def: DeckUnitDef, lane: number, self: Unit): void {
+    const dmgMult = this.dmgMult();
+    const flash = (name: string) => {
+      this.lastSkill = { name, color: def.color, ttl: 1.2 };
+      this.fx.push({ type: 'skill', lane, pos: 0.4, color: def.color, ttl: 0.7, maxTtl: 0.7, text: name });
+    };
+    switch (def.summonEffect) {
+      case 'nuke_all': {
+        flash(def.name);
+        const dmg = def.atk * 2.4 * dmgMult;
+        for (const e of this.enemies) this.damageEnemy(e, dmg);
+        this.shake = 1;
+        for (let l = 0; l < FIELD.lanes; l++) this.spawnParticles((l + 0.5) / FIELD.lanes, 0.4, def.color, 8);
+        break;
+      }
+      case 'nuke_lane': {
+        flash(def.name);
+        const dmg = def.atk * 3.4 * dmgMult;
+        for (const e of this.enemies) if (e.lane === lane) this.damageEnemy(e, dmg);
+        this.shake = Math.min(1, this.shake + 0.6);
+        this.spawnParticles((lane + 0.5) / FIELD.lanes, 0.5, def.color, 14);
+        break;
+      }
+      case 'chain': {
+        flash(def.name);
+        // hit up to 4 enemies (any lane), front-first
+        const targets = [...this.enemies].sort((x, y) => y.pos - x.pos).slice(0, 4);
+        targets.forEach((e, i) => this.damageEnemy(e, def.atk * (2 - i * 0.3) * dmgMult));
+        break;
+      }
+      case 'burn_lane': {
+        flash(def.name);
+        for (const e of this.enemies)
+          if (e.lane === lane) e.burn = { dps: def.atk * STATUS.burnDps, ttl: STATUS.burnDuration };
+        break;
+      }
+      case 'vulnerable_lane': {
+        flash(def.name);
+        for (const e of this.enemies) if (e.lane === lane) e.vulnerableTtl = STATUS.vulnerableDuration;
+        break;
+      }
+      case 'heal_core_big': {
+        flash(def.name);
+        const heal = Math.round(self.maxHp * 0.6 + def.atk * 6);
+        this.coreHp = Math.min(this.coreHpMax, this.coreHp + heal);
+        this.fx.push({ type: 'heal', lane: 1, pos: 1, color: def.color, ttl: 0.7, maxTtl: 0.7, text: `+${heal}` });
+        break;
+      }
+      case 'heal_core_small': {
+        const heal = Math.round(def.atk * 8 + 30);
+        this.coreHp = Math.min(this.coreHpMax, this.coreHp + heal);
+        this.fx.push({ type: 'heal', lane: 1, pos: 1, color: def.color, ttl: 0.6, maxTtl: 0.6, text: `+${heal}` });
+        break;
+      }
+      case 'heal_allies': {
+        flash(def.name);
+        for (const u of this.units) u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * 0.4));
+        break;
+      }
+      case 'shield_all': {
+        flash(def.name);
+        for (const u of this.units) u.shield += Math.round(def.atk * 6 + self.maxHp * 0.3);
+        break;
+      }
+      case 'none':
+      default:
+        break;
+    }
   }
 
   private mostThreatenedLane(): number {
@@ -217,15 +319,23 @@ export class BattleEngine {
     return best;
   }
 
+  private damageEnemy(e: Enemy, dmg: number): void {
+    const mult = e.vulnerableTtl > 0 ? STATUS.vulnerableMult : 1;
+    e.hp -= dmg * mult;
+  }
+
   // ---- Simulation --------------------------------------------------------
 
   step(dt: number): void {
     if (this.status !== 'playing') return;
     this.timeSec += dt;
 
-    if (this.overclockActive > 0) {
-      this.overclockActive = Math.max(0, this.overclockActive - dt);
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.6);
+    if (this.lastSkill) {
+      this.lastSkill.ttl -= dt;
+      if (this.lastSkill.ttl <= 0) this.lastSkill = null;
     }
+    if (this.overclockActive > 0) this.overclockActive = Math.max(0, this.overclockActive - dt);
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) this.combo = 0;
@@ -235,13 +345,15 @@ export class BattleEngine {
     }
 
     this.spawnEnemies(dt);
+    this.applyStatuses(dt);
     this.moveAndFight(dt);
     this.ageFx(dt);
+    this.stepParticles(dt);
     this.checkEndState();
   }
 
   private spawnEnemies(dt: number): void {
-    const wave = this.stage.waves[this.waveIndex];
+    let wave = this.waves[this.waveIndex];
     if (!wave) return;
     this.waveClock += dt;
     while (this.spawnCursor < wave.enemies.length && wave.enemies[this.spawnCursor].at <= this.waveClock) {
@@ -255,17 +367,26 @@ export class BattleEngine {
         hp: base.hp,
         maxHp: base.hp,
         atkTimer: ENEMY_ATK_INTERVAL,
+        vulnerableTtl: 0,
       });
+      if (s.kind === 'BOSS') this.shake = 1;
       this.spawnCursor++;
     }
     // Advance wave when fully spawned and cleared.
     if (this.spawnCursor >= wave.enemies.length && this.enemies.length === 0) {
-      if (this.waveIndex < this.stage.waves.length - 1) {
+      if (this.waveIndex < this.waves.length - 1) {
+        this.waveIndex++;
+        this.waveClock = 0;
+        this.spawnCursor = 0;
+      } else if (this.endless && this.endlessGen) {
+        // Endless: append a fresh, tougher wave and keep going.
+        this.waves.push(this.endlessGen(this.waves.length));
         this.waveIndex++;
         this.waveClock = 0;
         this.spawnCursor = 0;
       }
     }
+    wave = this.waves[this.waveIndex];
   }
 
   private slowFactor(): number {
@@ -275,23 +396,32 @@ export class BattleEngine {
     return this.overclockActive > 0 ? OVERCLOCK.allyDamageMult : 1;
   }
 
+  private applyStatuses(dt: number): void {
+    for (const e of this.enemies) {
+      if (e.vulnerableTtl > 0) e.vulnerableTtl = Math.max(0, e.vulnerableTtl - dt);
+      if (e.burn) {
+        e.hp -= e.burn.dps * dt;
+        e.burn.ttl -= dt;
+        if (e.burn.ttl <= 0) e.burn = undefined;
+      }
+    }
+  }
+
   private moveAndFight(dt: number): void {
     const slow = this.slowFactor();
 
-    // Move enemies; block at the unit line where a living unit holds.
     for (const e of this.enemies) {
       const laneHasUnit = this.units.some((u) => u.lane === e.lane && u.hp > 0);
       const speed = ENEMY[e.kind].speed * slow;
       const nextPos = e.pos + speed * dt;
       if (laneHasUnit && nextPos >= BLOCK_LINE) {
         e.pos = BLOCK_LINE;
-        // engage: attack the front unit
         e.atkTimer -= dt;
         if (e.atkTimer <= 0) {
           e.atkTimer = ENEMY_ATK_INTERVAL;
           const front = this.frontUnit(e.lane);
           if (front) {
-            front.hp -= ENEMY[e.kind].damage;
+            this.damageUnit(front, ENEMY[e.kind].damage);
             this.fx.push({ type: 'hit', lane: e.lane, pos: UNIT_POS, color: 'var(--mag)', ttl: 0.3, maxTtl: 0.3 });
           }
         }
@@ -299,13 +429,13 @@ export class BattleEngine {
         e.pos = nextPos;
         if (e.pos >= 1) {
           this.coreHp = Math.max(0, this.coreHp - ENEMY[e.kind].damage);
+          this.shake = Math.min(1, this.shake + (e.kind === 'BOSS' ? 1 : 0.5));
           this.fx.push({ type: 'core', lane: e.lane, pos: 1, color: 'var(--mag)', ttl: 0.5, maxTtl: 0.5, text: `-${ENEMY[e.kind].damage}` });
-          e.hp = 0; // mark removed
+          e.hp = 0;
         }
       }
     }
 
-    // Units act.
     for (const u of this.units) {
       if (u.hp <= 0) continue;
       u.atkTimer -= dt;
@@ -315,7 +445,7 @@ export class BattleEngine {
         const target = this.frontEnemy(u.lane);
         if (target) {
           const dmg = u.atk * this.dmgMult();
-          target.hp -= dmg;
+          this.damageEnemy(target, dmg);
           this.fx.push({ type: 'hit', lane: u.lane, pos: target.pos, color: u.color, ttl: 0.3, maxTtl: 0.3, text: `${Math.round(dmg)}` });
         }
       } else if (u.mode === 'healCore') {
@@ -323,7 +453,6 @@ export class BattleEngine {
         this.coreHp = Math.min(this.coreHpMax, this.coreHp + heal);
         this.fx.push({ type: 'heal', lane: u.lane, pos: 1, color: u.color, ttl: 0.5, maxTtl: 0.5, text: `+${heal}` });
       } else {
-        // healAlly: heal lowest-hp wounded ally
         let lowest: Unit | null = null;
         for (const a of this.units) {
           if (a.hp > 0 && a.hp < a.maxHp && (!lowest || a.hp / a.maxHp < lowest.hp / lowest.maxHp)) lowest = a;
@@ -336,15 +465,27 @@ export class BattleEngine {
       }
     }
 
-    // Remove dead enemies (award nothing here; rewards computed at end) and dead units.
     this.enemies = this.enemies.filter((e) => {
       if (e.hp <= 0) {
-        if (e.pos < 1) this.fx.push({ type: 'death', lane: e.lane, pos: e.pos, color: 'var(--spike)', ttl: 0.4, maxTtl: 0.4 });
+        if (e.pos < 1) {
+          this.enemiesKilled++;
+          this.fx.push({ type: 'death', lane: e.lane, pos: e.pos, color: 'var(--spike)', ttl: 0.4, maxTtl: 0.4 });
+          this.spawnParticles((e.lane + 0.5) / FIELD.lanes, e.pos, e.kind === 'BOSS' ? 'var(--surge)' : 'var(--spike)', e.kind === 'BOSS' ? 24 : 7);
+        }
         return false;
       }
       return true;
     });
     this.units = this.units.filter((u) => u.hp > 0);
+  }
+
+  private damageUnit(u: Unit, dmg: number): void {
+    if (u.shield > 0) {
+      const absorbed = Math.min(u.shield, dmg);
+      u.shield -= absorbed;
+      dmg -= absorbed;
+    }
+    u.hp -= dmg;
   }
 
   private frontEnemy(lane: number): Enemy | null {
@@ -359,6 +500,36 @@ export class BattleEngine {
     return null;
   }
 
+  // ---- particles ---------------------------------------------------------
+  private spawnParticles(nx: number, ny: number, color: string, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const ang = this.rng() * Math.PI * 2;
+      const spd = 0.15 + this.rng() * 0.5;
+      this.particles.push({
+        x: nx,
+        y: ny,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 0.1,
+        ttl: 0.4 + this.rng() * 0.4,
+        maxTtl: 0.8,
+        color,
+        size: 1.5 + this.rng() * 2.5,
+      });
+    }
+    if (this.particles.length > 240) this.particles.splice(0, this.particles.length - 240);
+  }
+
+  private stepParticles(dt: number): void {
+    if (this.particles.length === 0) return;
+    for (const p of this.particles) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 0.6 * dt; // gravity
+      p.ttl -= dt;
+    }
+    this.particles = this.particles.filter((p) => p.ttl > 0);
+  }
+
   private ageFx(dt: number): void {
     if (this.fx.length === 0) return;
     for (const f of this.fx) f.ttl -= dt;
@@ -370,8 +541,9 @@ export class BattleEngine {
       this.status = 'lost';
       return;
     }
-    const lastWave = this.waveIndex >= this.stage.waves.length - 1;
-    const wave = this.stage.waves[this.waveIndex];
+    if (this.endless) return; // endless only ends on defeat
+    const lastWave = this.waveIndex >= this.waves.length - 1;
+    const wave = this.waves[this.waveIndex];
     const fullySpawned = wave && this.spawnCursor >= wave.enemies.length;
     if (lastWave && fullySpawned && this.enemies.length === 0) {
       this.status = 'won';
@@ -379,6 +551,11 @@ export class BattleEngine {
   }
 
   totalWaves(): number {
-    return this.stage.waves.length;
+    return this.endless ? Infinity : this.waves.length;
+  }
+
+  /** Boss HP for the HUD bar, if a boss is currently alive. */
+  activeBoss(): Enemy | null {
+    return this.enemies.find((e) => e.kind === 'BOSS' && e.hp > 0) ?? null;
   }
 }

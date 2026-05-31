@@ -87,6 +87,17 @@ export function drawField(ctx: CanvasRenderingContext2D, engine: BattleEngine, w
     drawHp(ctx, cx - size, cy - size - 6, size * 2, e.hp / e.maxHp, s.fill);
   }
 
+  // particles
+  for (const p of engine.particles) {
+    const alpha = Math.max(0, p.ttl / p.maxTtl);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = resolveColor(ctx, p.color);
+    ctx.beginPath();
+    ctx.arc(p.x * w, p.y * fieldH, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
   // fx
   for (const f of engine.fx) {
     const cx = f.lane * laneW + laneW / 2;

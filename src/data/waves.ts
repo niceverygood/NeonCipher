@@ -53,6 +53,10 @@ function buildStage(
   for (let w = 0; w < 8; w++) {
     waves.push(buildWave(rng, index + 1, w));
   }
+  // Final wave gets a BOSS that arrives after the regular spawns.
+  const finalWave = waves[waves.length - 1];
+  const lastAt = finalWave.enemies.reduce((m, e) => Math.max(m, e.at), 0);
+  finalWave.enemies.push({ kind: 'BOSS', lane: 1, at: parseFloat((lastAt + 2).toFixed(2)) });
   return {
     id: `stage_${index + 1}`,
     index,
@@ -72,6 +76,8 @@ export const STAGES: StageDef[] = [
   buildStage(2, 'SECTOR 03 // 냉각 탑', 'ICE 데몬이 끓어오르는 서버팜', 140, 1000, 150, 420),
   buildStage(3, 'SECTOR 04 // 기업 방화벽', '거대 기업 코어로 향하는 관문', 150, 1300, 200, 700),
   buildStage(4, 'SECTOR 05 // 심층 코어', '도시의 의식이 잠든 최심부', 160, 1700, 260, 1050),
+  buildStage(5, 'SECTOR 06 // 블랙 ICE', '군용 방어 데몬이 진을 친 사지', 175, 2200, 340, 1500),
+  buildStage(6, 'SECTOR 07 // 제로 노드', '도시의 진짜 의식이 깨어나는 곳', 190, 2900, 440, 2100),
 ];
 
 export const STAGE_BY_ID: Record<string, StageDef> = Object.fromEntries(
@@ -82,3 +88,33 @@ export const STAGE_BY_ID: Record<string, StageDef> = Object.fromEntries(
 export function stageEnemyCount(stage: StageDef): number {
   return stage.waves.reduce((sum, w) => sum + w.enemies.length, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Endless "DEEP DIVE": one synthetic stage whose waves are generated on the
+// fly by the engine. Difficulty climbs forever; score = waves survived.
+// ---------------------------------------------------------------------------
+const endlessRng = mulberry32(999983);
+
+export function endlessWave(waveIndex: number): WaveDef {
+  // Reuse the difficulty curve but keep ramping past the normal cap.
+  const difficulty = 2 + waveIndex * 0.6;
+  const wave = buildWave(endlessRng, difficulty, waveIndex);
+  // Boss every 5th wave.
+  if (waveIndex > 0 && waveIndex % 5 === 0) {
+    const lastAt = wave.enemies.reduce((m, e) => Math.max(m, e.at), 0);
+    wave.enemies.push({ kind: 'BOSS', lane: 1, at: parseFloat((lastAt + 1.5).toFixed(2)) });
+  }
+  return wave;
+}
+
+export const ENDLESS_STAGE: StageDef = {
+  id: 'endless',
+  index: 999,
+  name: 'DEEP DIVE // 무한 침투',
+  subtitle: '코어가 버티는 한 끝없이 밀려오는 ICE. 최고 도달 웨이브에 도전.',
+  coreHp: 200,
+  waves: [endlessWave(0)],
+  rewardCrystal: 0,
+  rewardExp: 0,
+  recommendedPower: 600,
+};

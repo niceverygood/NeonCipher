@@ -36,7 +36,16 @@ export const ENEMY: Record<EnemyKind, { hp: number; speed: number; damage: numbe
   NORMAL: { hp: 60, speed: 1 / 14, damage: 8, reward: 4 },
   RUSH: { hp: 38, speed: 1 / 8, damage: 6, reward: 5 },
   HEAVY: { hp: 220, speed: 1 / 22, damage: 18, reward: 10 },
+  BOSS: { hp: 1400, speed: 1 / 34, damage: 40, reward: 60 },
 };
+
+// Status-effect tuning applied to enemies by ghost skills.
+export const STATUS = {
+  burnDps: 0.6, // fraction of caster ATK applied per second
+  burnDuration: 4,
+  vulnerableMult: 1.5, // incoming damage multiplier
+  vulnerableDuration: 5,
+} as const;
 
 // Per-rarity multipliers applied to ghost base stats.
 export const RARITY_MULT: Record<Rarity, { hp: number; atk: number }> = {

@@ -22,6 +22,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '적 레인 전체에 화력 낙뢰. 처치 시 콤보 게이지 회복.',
     passive: '처치 시 오버클럭 게이지 +5.',
     lore: '"기업 암살부대의 마지막 의식. 죽어서도 방아쇠를 놓지 못했다."',
+    summonEffect: 'nuke_all',
     featured: true,
   },
   {
@@ -40,6 +41,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '전 레인 차폐막 전개, 피해 흡수 후 반사.',
     passive: '받은 피해의 20%를 공격력으로 반사.',
     lore: '"코어를 지키도록 설계된 최초의 수호 데몬. 충성은 코드에 새겨졌다."',
+    summonEffect: 'shield_all',
     featured: true,
   },
   {
@@ -58,6 +60,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '코어 HP 회복 + 아군 고스트 재기동.',
     passive: '초당 코어 HP 소량 회복.',
     lore: '"폐원된 의료망에서 복원된 간호 AI. 아직도 환자를 센다."',
+    summonEffect: 'heal_core_big',
   },
   {
     id: 'g_bulwark',
@@ -75,6 +78,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '단일 레인에 차폐벽 소환, 피해 흡수 후 반사.',
     passive: '전열에서 받는 피해 15% 감소.',
     lore: '"역포획된 방어 데몬. 한때 자신이 막던 코어를 이제 지킨다."',
+    summonEffect: 'shield_all',
   },
   {
     id: 'g_nova',
@@ -92,6 +96,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '단일 레인에 강력한 집중 폭격.',
     passive: '단일 표적에게 추가 피해.',
     lore: '"한 번의 발사로 도시 블록을 지웠다는 포격 위성의 잔존 의식."',
+    summonEffect: 'nuke_lane',
   },
   {
     id: 'g_glitch',
@@ -109,6 +114,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '방어 무시 관통 + 약점 노출(받는 피해 증가).',
     passive: '공격이 방어력의 50%를 무시.',
     lore: '"존재 자체가 버그. 시스템은 그를 지우려다 더 강하게 만들었다."',
+    summonEffect: 'vulnerable_lane',
   },
   {
     id: 'g_vesper',
@@ -126,6 +132,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '적 방어 무시 관통 + 약점 노출 디버프.',
     passive: '디버프된 적에게 추가 피해.',
     lore: '"정보 브로커. 비밀을 팔다 자기 자신이 데이터가 됐다."',
+    summonEffect: 'vulnerable_lane',
   },
   {
     id: 'g_ember',
@@ -143,6 +150,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '광역 화상 도트딜 부여.',
     passive: '공격 시 화상 도트딜 부여.',
     lore: '"불씨 하나로 데이터센터를 태운 방화광. 재 속에서 웃는다."',
+    summonEffect: 'burn_lane',
   },
   {
     id: 'g_warden',
@@ -160,6 +168,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '전열 방어 유닛 — 레인 적 진군 저지.',
     passive: '전열에서 받는 피해 10% 감소.',
     lore: '"교도소 보안망의 잔류 인격. 누구도 통과시키지 않는다."',
+    summonEffect: 'none',
   },
   {
     id: 'g_medic',
@@ -177,6 +186,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '아군 고스트 지속 회복.',
     passive: '인접 레인 아군 초당 회복.',
     lore: '"7번째 시제 간호 유닛. 앞의 여섯은 모두 환자를 구하다 소실됐다."',
+    summonEffect: 'heal_allies',
   },
   {
     id: 'g_jolt',
@@ -194,6 +204,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '인접 적에게 튕기는 전격. 군집에 강함.',
     passive: '공격이 같은 레인 뒤 적에게 일부 전이.',
     lore: '"길거리 해커 키드. 죽은 줄도 모르고 아직 장난을 친다."',
+    summonEffect: 'chain',
   },
   {
     id: 'g_patch',
@@ -211,6 +222,7 @@ export const GHOSTS: GhostDef[] = [
     skill: '코어 소량 회복.',
     passive: '소환 시 코어 HP 즉시 소량 회복.',
     lore: '"버려진 업데이트 봇. 고칠 수 없는 세상을 계속 패치하려 한다."',
+    summonEffect: 'heal_core_small',
   },
 ];
 

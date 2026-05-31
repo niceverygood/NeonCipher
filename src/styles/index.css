@@ -247,3 +247,27 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
+
+.combo-pop {
+  animation: comboPop 0.22s ease-out;
+}
+@keyframes comboPop {
+  0% { transform: scale(1.6); }
+  100% { transform: scale(1); }
+}
+
+.skill-banner {
+  animation: skillBanner 1.2s ease-out forwards;
+}
+@keyframes skillBanner {
+  0% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.8); }
+  18% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.06); }
+  78% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
+/* daily reward shimmer */
+@keyframes sweep {
+  0% { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
+}

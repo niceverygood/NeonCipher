@@ -9,6 +9,19 @@ export type Attribute = 'FIRE' | 'BLOCK' | 'SPIKE' | 'SURGE' | 'REPAIR';
 
 export type Role = 'DEALER' | 'TANK' | 'DEBUFFER' | 'SUPPORT' | 'HEALER' | 'SUMMONER';
 
+// Instant effect fired the moment a ghost is summoned to the field.
+export type SummonEffect =
+  | 'nuke_all' // burst damage to every enemy on the field
+  | 'nuke_lane' // heavy burst to enemies in the deployed lane
+  | 'burn_lane' // apply burn DoT to the lane
+  | 'vulnerable_lane' // mark lane enemies as vulnerable
+  | 'chain' // chained damage to several enemies
+  | 'heal_core_big'
+  | 'heal_core_small'
+  | 'heal_allies'
+  | 'shield_all' // grant a damage-absorbing shield to all allies
+  | 'none';
+
 // ---------------------------------------------------------------------------
 // Ghost definitions (static content) + owned instances (save state)
 // ---------------------------------------------------------------------------
@@ -29,6 +42,7 @@ export interface GhostDef {
   skill: string; // skill summary
   passive: string;
   lore: string;
+  summonEffect: SummonEffect; // instant effect on summon
   featured?: boolean; // pickup banner unit (UR / designated SSR)
 }
 
@@ -60,7 +74,7 @@ export interface GachaState {
 // Battle types
 // ---------------------------------------------------------------------------
 
-export type EnemyKind = 'NORMAL' | 'RUSH' | 'HEAVY';
+export type EnemyKind = 'NORMAL' | 'RUSH' | 'HEAVY' | 'BOSS';
 
 export interface EnemySpawn {
   kind: EnemyKind;
@@ -110,4 +124,6 @@ export interface SaveState {
   clearedStages: string[];
   deck: (string | null)[]; // up to 5 ghost ids
   settings: Settings;
+  endlessBest: number; // best wave reached in DEEP DIVE
+  lastDailyClaim: string; // date string of last claimed daily reward
 }
