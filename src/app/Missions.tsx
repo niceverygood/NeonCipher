@@ -7,23 +7,26 @@ import { CurrencyBar } from '@/ui/CurrencyBar';
 import { useGame, achievementContext } from '@/state/store';
 import { ACHIEVEMENTS, type Reward } from '@/data/achievements';
 import { sfx } from '@/audio/sfx';
+import { CityBackground } from '@/ui/CityBackground';
 import type { SaveState } from '@/types';
 
 export default function Missions() {
   const nav = useNavigate();
   const claimAchievement = useGame((s) => s.claimAchievement);
   const claimed = useGame((s) => s.claimedAchievements);
-  // Select primitives (stable refs) then derive — avoids new-object selectors.
+  const reducedFx = useGame((s) => s.settings.reducedFx);
   const ownedGhosts = useGame((s) => s.ownedGhosts);
   const clearedStages = useGame((s) => s.clearedStages);
   const endlessBest = useGame((s) => s.endlessBest);
   const totalPulls = useGame((s) => s.gacha.totalPulls);
+
   const ctx = achievementContext({
     ownedGhosts,
     clearedStages,
     endlessBest,
     gacha: { pity: 0, guaranteed: false, totalPulls },
   } as SaveState);
+
   const [reward, setReward] = useState<Reward | null>(null);
 
   const onClaim = (id: string) => {
@@ -41,8 +44,9 @@ export default function Missions() {
 
   return (
     <Screen>
+      <CityBackground reducedFx={reducedFx} />
       <ScreenHeader kicker="Objectives // Achievements" title="미션" accent="var(--surge)" onBack={() => nav('/lobby')} />
-      <div style={{ flex: 'none', padding: '0 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ flex: 'none', padding: '0 18px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
         <span className="font-mono" style={{ fontSize: 10, color: 'var(--muted)' }}>
           달성 <span style={{ color: 'var(--surge)', fontWeight: 700 }}>{doneCount}</span> / {ACHIEVEMENTS.length}
           {claimableCount > 0 && <span style={{ color: 'var(--mag)' }}> · 수령 가능 {claimableCount}</span>}
@@ -50,7 +54,7 @@ export default function Missions() {
         <CurrencyBar />
       </div>
 
-      <div className="scroll" style={{ flex: 1, padding: '4px 18px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="scroll" style={{ flex: 1, padding: '4px 18px 20px', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
         {ACHIEVEMENTS.map((a, i) => {
           const prog = Math.min(ctx[a.metric], a.goal);
           const done = ctx[a.metric] >= a.goal;

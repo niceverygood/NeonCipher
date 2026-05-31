@@ -4,12 +4,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Screen } from '@/ui/Screen';
 import { CurrencyBar } from '@/ui/CurrencyBar';
 import { GhostFigure, RARITY_COLOR, Modal } from '@/ui/primitives';
-import { useGame, todayKey, type DailyReward } from '@/state/store';
+import { useGame, todayKey, achievementContext, type DailyReward } from '@/state/store';
 import { GHOST_BY_ID } from '@/data/ghosts';
 import { ATTR_VAR } from '@/data/balance';
 import { deriveStats } from '@/game/progression/stats';
 import { STAGES } from '@/data/waves';
+import { ACHIEVEMENTS } from '@/data/achievements';
 import { sfx } from '@/audio/sfx';
+import { CityBackground } from '@/ui/CityBackground';
+import type { SaveState } from '@/types';
 
 const MENU = [
   { to: '/gacha', label: '가챠', en: 'RECRUIT', accent: 'var(--mag)' },
@@ -26,9 +29,22 @@ export default function Lobby() {
   const endlessBest = useGame((s) => s.endlessBest);
   const lastDailyClaim = useGame((s) => s.lastDailyClaim);
   const claimDaily = useGame((s) => s.claimDaily);
+  const reducedFx = useGame((s) => s.settings.reducedFx);
+  const totalPulls = useGame((s) => s.gacha.totalPulls);
+  const claimedAchv = useGame((s) => s.claimedAchievements);
 
   const [reward, setReward] = useState<DailyReward | null>(null);
   const canClaimDaily = lastDailyClaim !== todayKey();
+
+  const achvCtx = achievementContext({
+    ownedGhosts: owned,
+    clearedStages: cleared,
+    endlessBest,
+    gacha: { pity: 0, guaranteed: false, totalPulls },
+  } as SaveState);
+  const claimableMissions = ACHIEVEMENTS.filter(
+    (a) => achvCtx[a.metric] >= a.goal && !claimedAchv.includes(a.id),
+  ).length;
 
   const deckPower = deck.reduce((sum, id) => {
     if (!id || !owned[id]) return sum;
@@ -48,15 +64,17 @@ export default function Lobby() {
 
   return (
     <Screen>
+      <CityBackground reducedFx={reducedFx} />
+
       {/* top bar */}
-      <div style={{ flex: 'none', padding: '18px 18px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ flex: 'none', padding: '18px 18px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
         <div className="font-disp" style={{ fontSize: 22, fontWeight: 700 }}>
           <span className="logo-n">NEON</span> <span className="logo-c">CIPHER</span>
         </div>
         <CurrencyBar />
       </div>
 
-      <div className="scroll" style={{ flex: 1, padding: '4px 18px 14px' }}>
+      <div className="scroll" style={{ flex: 1, padding: '4px 18px 14px', position: 'relative' }}>
         {/* daily reward */}
         <AnimatePresence>
           {canClaimDaily && (
@@ -152,6 +170,25 @@ export default function Lobby() {
           </div>
         </div>
 
+        {/* missions */}
+        <button
+          onClick={() => nav('/missions')}
+          className="panel"
+          style={{ width: '100%', marginTop: 12, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'left', borderColor: claimableMissions > 0 ? 'var(--surge)' : 'var(--line2)', background: 'radial-gradient(120% 80% at 0% 0%,rgba(255,212,0,.08),transparent 60%),var(--panel)' }}
+        >
+          <div>
+            <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--surge)' }}>OBJECTIVES // 미션</div>
+            <div className="font-disp" style={{ fontSize: 15, fontWeight: 700, color: '#f3f6ff', marginTop: 2 }}>업적 · 도전 과제</div>
+          </div>
+          {claimableMissions > 0 ? (
+            <span className="font-mono" style={{ fontSize: 11, color: '#05060a', background: 'var(--surge)', borderRadius: 12, padding: '4px 10px', fontWeight: 700, boxShadow: '0 0 12px var(--surge)' }}>
+              {claimableMissions} 수령
+            </span>
+          ) : (
+            <span className="font-mono" style={{ fontSize: 16, color: 'var(--muted)' }}>›</span>
+          )}
+        </button>
+
         {/* deep dive */}
         <button
           onClick={() => nav('/battle/endless')}
@@ -170,7 +207,7 @@ export default function Lobby() {
       </div>
 
       {/* menu */}
-      <div style={{ flex: 'none', padding: '6px 18px 22px' }}>
+      <div style={{ flex: 'none', padding: '6px 18px 22px', position: 'relative' }}>
         <motion.button
           whileTap={{ scale: 0.98 }}
           className="btn btn-primary"
