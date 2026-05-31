@@ -33,6 +33,7 @@ function starterSave(): Omit<SaveState, 'settings'> & { settings: SaveState['set
     settings: { muted: false, reducedFx: false },
     endlessBest: 0,
     lastDailyClaim: '',
+    loginStreak: 0,
     claimedAchievements: [],
   };
 }
@@ -40,13 +41,31 @@ function starterSave(): Omit<SaveState, 'settings'> & { settings: SaveState['set
 export function todayKey(): string {
   return new Date().toDateString();
 }
+function yesterdayKey(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toDateString();
+}
 
 export interface DailyReward {
   crystal: number;
   cube: number;
   ticketSingle: number;
+  ticketTen?: number;
+  day?: number; // 1..7 streak day this reward is for
+  streak?: number; // resulting streak count
 }
-const DAILY_REWARD: DailyReward = { crystal: 800, cube: 300, ticketSingle: 1 };
+
+// Escalating 7-day login calendar. Day 7 is the jackpot (10-pull ticket).
+export const DAILY_CALENDAR: DailyReward[] = [
+  { crystal: 600, cube: 200, ticketSingle: 1 },
+  { crystal: 800, cube: 250, ticketSingle: 1 },
+  { crystal: 1000, cube: 300, ticketSingle: 2 },
+  { crystal: 1200, cube: 400, ticketSingle: 2 },
+  { crystal: 1500, cube: 500, ticketSingle: 3 },
+  { crystal: 2000, cube: 700, ticketSingle: 3 },
+  { crystal: 3000, cube: 1000, ticketSingle: 0, ticketTen: 1 }, // day 7 jackpot
+];
 
 interface StoreState extends SaveState {
   // ---- gacha ----

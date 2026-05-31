@@ -28,6 +28,7 @@ export default function Lobby() {
   const cleared = useGame((s) => s.clearedStages);
   const endlessBest = useGame((s) => s.endlessBest);
   const lastDailyClaim = useGame((s) => s.lastDailyClaim);
+  const loginStreak = useGame((s) => s.loginStreak);
   const claimDaily = useGame((s) => s.claimDaily);
   const reducedFx = useGame((s) => s.settings.reducedFx);
   const totalPulls = useGame((s) => s.gacha.totalPulls);
@@ -99,9 +100,9 @@ export default function Lobby() {
               }}
             >
               <div>
-                <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--surge)' }}>DAILY UPLINK</div>
+                <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--surge)' }}>DAILY UPLINK · DAY {Math.min(7, loginStreak + 1)}/7</div>
                 <div className="font-disp" style={{ fontSize: 15, fontWeight: 700, color: '#f3f6ff', marginTop: 2 }}>일일 접속 보상</div>
-                <div className="font-mono" style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>◈ 크리스탈 · ❖ 큐브 · 단챠 티켓</div>
+                <div className="font-mono" style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>연속 접속할수록 보상 증가 · 7일차 10연 티켓</div>
               </div>
               <span className="btn btn-primary" style={{ padding: '9px 16px', fontSize: 11 }}>수령</span>
             </motion.button>
@@ -234,12 +235,41 @@ export default function Lobby() {
 
       {reward && (
         <Modal onClose={() => setReward(null)}>
-          <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', color: 'var(--surge)', textAlign: 'center' }}>DAILY UPLINK COMPLETE</div>
+          <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', color: 'var(--surge)', textAlign: 'center' }}>
+            DAILY UPLINK · DAY {reward.streak ?? 1}/7
+          </div>
           <div className="font-disp glitch" data-t="REWARD" style={{ fontSize: 26, fontWeight: 700, color: '#f3f6ff', textAlign: 'center', marginTop: 6 }}>REWARD</div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 18, marginTop: 18 }}>
+
+          {/* 7-day streak track */}
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginTop: 12 }}>
+            {Array.from({ length: 7 }, (_, i) => {
+              const day = i + 1;
+              const done = day <= (reward.streak ?? 1);
+              const isToday = day === (reward.streak ?? 1);
+              return (
+                <div
+                  key={day}
+                  className="font-mono"
+                  style={{
+                    width: 26, height: 26, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700,
+                    border: `1px solid ${isToday ? 'var(--surge)' : done ? 'var(--line2)' : 'var(--line)'}`,
+                    background: done ? 'rgba(255,212,0,.12)' : 'var(--panel2)',
+                    color: isToday ? 'var(--surge)' : done ? 'var(--txt)' : 'var(--dim)',
+                    boxShadow: isToday ? '0 0 10px rgba(255,212,0,.4)' : 'none',
+                  }}
+                >
+                  {day === 7 ? '★' : day}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
             <RewardChip icon="◈" label="크리스탈" value={reward.crystal} color="var(--cyan)" />
             <RewardChip icon="❖" label="큐브" value={reward.cube} color="var(--mag)" />
-            <RewardChip icon="🎫" label="단챠" value={reward.ticketSingle} color="var(--surge)" />
+            {reward.ticketSingle > 0 && <RewardChip icon="🎫" label="단챠" value={reward.ticketSingle} color="var(--surge)" />}
+            {(reward.ticketTen ?? 0) > 0 && <RewardChip icon="🎟" label="10연" value={reward.ticketTen ?? 0} color="var(--mag)" />}
           </div>
           <button className="btn btn-primary" onClick={() => setReward(null)} style={{ width: '100%', marginTop: 20, padding: 12, fontSize: 13 }}>확인</button>
         </Modal>
