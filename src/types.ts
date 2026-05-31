@@ -126,5 +126,6 @@ export interface SaveState {
   settings: Settings;
   endlessBest: number; // best wave reached in DEEP DIVE
   lastDailyClaim: string; // date string of last claimed daily reward
+  loginStreak: number; // consecutive days claimed (1..7)
   claimedAchievements: string[]; // ids of claimed achievement rewards
 }

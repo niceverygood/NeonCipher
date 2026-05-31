@@ -231,16 +231,23 @@ export const useGame = create<StoreState>()(
       claimDaily: () => {
         const s = get();
         if (s.lastDailyClaim === todayKey()) return null;
+        // Continue the streak if the last claim was yesterday, else reset to 1.
+        const continued = s.lastDailyClaim === yesterdayKey();
+        const streak = continued ? Math.min(7, s.loginStreak + 1) : 1;
+        const base = DAILY_CALENDAR[(streak - 1) % DAILY_CALENDAR.length];
+        const reward: DailyReward = { ...base, day: streak, streak };
         set({
           lastDailyClaim: todayKey(),
+          loginStreak: streak,
           currencies: {
             ...s.currencies,
-            crystal: s.currencies.crystal + DAILY_REWARD.crystal,
-            cube: s.currencies.cube + DAILY_REWARD.cube,
-            ticketSingle: s.currencies.ticketSingle + DAILY_REWARD.ticketSingle,
+            crystal: s.currencies.crystal + reward.crystal,
+            cube: s.currencies.cube + reward.cube,
+            ticketSingle: s.currencies.ticketSingle + reward.ticketSingle,
+            ticketTen: s.currencies.ticketTen + (reward.ticketTen ?? 0),
           },
         });
-        return DAILY_REWARD;
+        return reward;
       },
 
       claimAchievement: (id) => {
@@ -279,6 +286,7 @@ export const useGame = create<StoreState>()(
         settings: s.settings,
         endlessBest: s.endlessBest,
         lastDailyClaim: s.lastDailyClaim,
+        loginStreak: s.loginStreak,
         claimedAchievements: s.claimedAchievements,
       }),
       migrate: (persisted, version) => {
