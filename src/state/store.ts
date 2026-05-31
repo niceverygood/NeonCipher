@@ -10,6 +10,7 @@ import { GACHA, LEVEL } from '@/data/balance';
 import { pullOnce, pullTen, type PullResult, type Rng } from '@/game/gacha/gacha';
 import { addExp, starsForDupes } from '@/game/progression/stats';
 import { STAGE_BY_ID } from '@/data/waves';
+import { ACHIEVEMENTS, type AchvCtx, type Reward } from '@/data/achievements';
 
 const SAVE_VERSION = 1;
 
@@ -32,6 +33,7 @@ function starterSave(): Omit<SaveState, 'settings'> & { settings: SaveState['set
     settings: { muted: false, reducedFx: false },
     endlessBest: 0,
     lastDailyClaim: '',
+    claimedAchievements: [],
   };
 }
 
@@ -62,6 +64,8 @@ interface StoreState extends SaveState {
   // ---- daily ----
   canClaimDaily: () => boolean;
   claimDaily: () => DailyReward | null;
+  // ---- achievements ----
+  claimAchievement: (id: string) => Reward | null;
   // ---- settings / misc ----
   toggleMute: () => void;
   setReducedFx: (v: boolean) => void;
@@ -77,6 +81,22 @@ function applyResult(owned: Record<string, OwnedGhost>, r: PullResult): PullResu
   const dupes = existing.dupes + 1;
   owned[r.ghostId] = { ...existing, dupes, stars: starsForDupes(dupes) };
   return { ...r, isNew: false };
+}
+
+/** Derive achievement progress context from the current save. */
+export function achievementContext(s: SaveState): AchvCtx {
+  const ownedIds = Object.keys(s.ownedGhosts);
+  const ssrOwned = ownedIds.filter((id) => {
+    const g = GHOST_BY_ID[id];
+    return g && (g.rarity === 'SSR' || g.rarity === 'UR');
+  }).length;
+  return {
+    ownedCount: ownedIds.length,
+    ssrOwned,
+    cleared: s.clearedStages.length,
+    endlessBest: s.endlessBest,
+    totalPulls: s.gacha.totalPulls,
+  };
 }
 
 const LEVELUP_COST = 200; // crystal per level
@@ -204,6 +224,24 @@ export const useGame = create<StoreState>()(
         return DAILY_REWARD;
       },
 
+      claimAchievement: (id) => {
+        const s = get();
+        const def = ACHIEVEMENTS.find((a) => a.id === id);
+        if (!def) return null;
+        if (s.claimedAchievements.includes(id)) return null;
+        const ctx = achievementContext(s);
+        if (ctx[def.metric] < def.goal) return null;
+        set({
+          claimedAchievements: [...s.claimedAchievements, id],
+          currencies: {
+            ...s.currencies,
+            crystal: s.currencies.crystal + def.reward.crystal,
+            cube: s.currencies.cube + def.reward.cube,
+          },
+        });
+        return def.reward;
+      },
+
       toggleMute: () => set((s) => ({ settings: { ...s.settings, muted: !s.settings.muted } })),
       setReducedFx: (v) => set((s) => ({ settings: { ...s.settings, reducedFx: v } })),
       resetData: () => set({ ...starterSave() }),
@@ -222,6 +260,7 @@ export const useGame = create<StoreState>()(
         settings: s.settings,
         endlessBest: s.endlessBest,
         lastDailyClaim: s.lastDailyClaim,
+        claimedAchievements: s.claimedAchievements,
       }),
       migrate: (persisted, version) => {
         // Defensive: if the shape is broken or from an older version, reset.

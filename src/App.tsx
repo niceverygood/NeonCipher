@@ -11,6 +11,7 @@ import Gacha from '@/app/Gacha';
 import Codex from '@/app/Codex';
 import Team from '@/app/Team';
 import Settings from '@/app/Settings';
+import Missions from '@/app/Missions';
 import { useGame } from '@/state/store';
 import { sfx } from '@/audio/sfx';
 
@@ -28,6 +29,7 @@ function AnimatedRoutes() {
         <Route path="/codex" element={<Codex />} />
         <Route path="/team" element={<Team />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/missions" element={<Missions />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
